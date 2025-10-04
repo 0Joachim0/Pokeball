@@ -3,6 +3,7 @@ import pandas as pd
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output
 import plotly.express as px
+import plotly.graph_objects as go
 
 # ---------------------------
 # 1. Download historical data
@@ -26,9 +27,10 @@ if isinstance(raw.columns, pd.MultiIndex):
     data = raw['Close'].copy()
 else:
     data = raw[['Close']].copy()
+    data.columns = [list(tickers.values())[0]]
 
 # Map ticker symbols back to readable names
-symbol_to_name = dict(zip(list(tickers.values()), tickers.keys()))
+symbol_to_name = {v: k for k, v in tickers.items()}
 data = data.rename(columns=symbol_to_name)
 
 # Forward-fill missing values and drop columns that are completely empty
@@ -114,26 +116,46 @@ def update_graph(selected_range):
     baseline = filtered.iloc[0]
     performance = (filtered / baseline - 1) * 100
 
-    # Transform data into long format for Plotly Express
-    df = performance.reset_index().melt(
-        id_vars='Date',
-        var_name='Asset',
-        value_name='Performance (%)'
-    )
+    # Reset index for Plotly
+    filtered_reset = filtered.reset_index()
+    # print(filtered_reset)
+    performance_reset = performance.reset_index()
+    # print(performance_reset)
 
-    # Create the line chart
-    fig = px.line(
-        df,
-        x='Date',
-        y='Performance (%)',
-        color='Asset',
-        title=f"Performance from {start_date.date()}",
-        labels={"Performance (%)": "Performance (%)", "Date": "Date"},
-        template="plotly_dark"
-    )
+    # Melt performance
+    df_perf = performance_reset.melt(id_vars='Date', var_name='Asset', value_name='Performance (%)')
 
-    # Format hover, y-axis, and add zero line
-    fig.update_traces(hovertemplate='%{y:.2f}%<br>%{x|%Y-%m-%d}')
+    # Melt actual price
+    df_price = filtered_reset.melt(id_vars='Date', var_name='Asset', value_name='Price')
+    
+
+    def plot_performance_px(df_perf, df_price):
+        # Merge price into performance DataFrame
+        df = df_perf.merge(df_price, on=['Date', 'Asset'])
+
+        # Prepare customdata: one price per row
+        df['customPrice'] = df['Price']
+
+        # Create px.line
+        fig = px.line(
+            df,
+            x='Date',
+            y='Performance (%)',
+            color='Asset',
+            template='plotly_dark',
+            title='Performance from Selected Start Date'
+        )
+
+        # Assign customdata per trace for correct hover
+        for asset in df['Asset'].unique():
+            trace = next(t for t in fig.data if t.name == asset)
+            trace.customdata = df[df['Asset'] == asset]['customPrice'].values.reshape(-1, 1)
+            trace.hovertemplate = '%{y:.2f}%<br>Price: $%{customdata[0]:.2f}<extra>%{fullData.name}</extra>'
+
+        return fig
+    
+    fig = plot_performance_px(df_perf,df_price)
+
     fig.update_yaxes(ticksuffix="%")
     fig.add_hline(y=0, line_dash="dash", line_color="gray")
     fig.update_layout(
