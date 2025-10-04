@@ -61,7 +61,7 @@ app.layout = html.Div(
 
         # Subtitle / instructions
         html.P(
-            "Drag the range slider to select a time period — performance will reset to 0% at the new start date.",
+            "Drag the range slider to select a time period — performance will be measured from the new start date.",
             style={"textAlign": "center", "color": "#bbb", "marginBottom": "20px"}
         ),
 
